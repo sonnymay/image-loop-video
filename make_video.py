@@ -28,8 +28,6 @@ FPS = 30
 
 # Ken Burns zoom: how much each image zooms over its time slot (0.12 = 12%, slow).
 ZOOM_AMOUNT = 0.12
-# How far to pan across the available margin (0.5 = half of it), alternating per image.
-PAN_AMOUNT = 0.5
 # Supported zoom modes for the slideshow effect.
 ZOOM_MODES = ("alternate", "in", "out", "inout", "none")
 
@@ -53,12 +51,13 @@ IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 def _dimensions(height: int) -> tuple[int, int, str]:
     """Return (width, height, intermediate "w:h") for a 16:9 output of the given height.
 
-    The intermediate is ~1.33x the output: images are upscaled to it before zoompan so the
-    slow zoom stays smooth (no jitter), then zoompan renders down to the real output size.
+    The intermediate is 2x the output: images are upscaled to it before zoompan so the slow
+    zoom moves in sub-pixel steps (smooth, no trembling), then zoompan renders down to the
+    real output size. 2x keeps each zoompan rounding step <0.5px at the output.
     """
     width = RESOLUTION_WIDTHS[height]
-    inter_w = (width * 4 // 3) & ~1   # round down to even
-    inter_h = (height * 4 // 3) & ~1
+    inter_w = (width * 2) & ~1   # round down to even
+    inter_h = (height * 2) & ~1
     return width, height, f"{inter_w}:{inter_h}"
 
 
@@ -87,11 +86,10 @@ def _zoom_filter(
              f"1+{a}*{progress},1+{a}*(1-{progress}))")
     else:  # "none" or unknown -> no zoom
         return f"scale={width}:{height},setsar=1"
-    # Horizontal pan that alternates direction per image (drifts within the zoom
-    # margin, so it stays in-bounds and is zero when zoom == 1).
-    dir_x = f"if(eq(mod(floor(on/{p}),2),0),1,-1)"
-    x = f"(iw-iw/zoom)/2*(1+{PAN_AMOUNT}*{dir_x}*(2*{progress}-1))"
-    y = "ih/2-(ih/zoom/2)"  # vertically centered
+    # Pure CENTERED zoom (no pan) — the crop stays dead-center so the image only
+    # zooms in/out, with no side-to-side drift.
+    x = "iw/2-(iw/zoom/2)"
+    y = "ih/2-(ih/zoom/2)"
     return (
         f"scale={inter},"
         f"zoompan=z='{z}':d={p}:x='{x}':y='{y}':"

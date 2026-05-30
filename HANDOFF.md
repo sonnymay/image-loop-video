@@ -44,20 +44,23 @@ Two front-ends, one engine:
 - `get_images(folder) -> list[Path]` — supported images, absolute paths, natural-sorted.
 - `build_concat_file(images, audio_duration, concat_path) -> (entries, loops)` — writes the
   ffmpeg concat-demuxer file.
-- `_zoom_filter(mode, seconds, fps) -> str` — builds the zoompan chain for the Ken Burns
-  zoom **and** a gentle alternating pan. Zoom/pan are driven by `mod(on, frames_per_image)`
-  so they **reset per image** under the concat demuxer (plain `zoompan` drifts). Modes in
-  `ZOOM_MODES`.
-- `_video_filter(zoom_mode, audio_duration, fade)` / `_audio_filter(audio_duration, fade,
-  normalize)` — assemble the `-vf` (zoom/pan + fade in/out) and `-af` (loudnorm to -14 LUFS
-  + afade in/out) chains. `_clamp_fade` keeps fades ≤ half the clip.
-- `build_ffmpeg_cmd(concat, audio, output, audio_duration, zoom_mode="alternate",
-  fade=1.0, normalize=True)` — **shared** ffmpeg command (CLI + web).
-- `create_video(..., zoom_mode, fade, normalize)` — runs it synchronously (CLI).
-- `main() -> int` — arg parsing (`--zoom MODE`, `--fade SECONDS`, `--no-normalize`).
-- Constants: `SECONDS_PER_IMAGE = 13`, `FPS = 30`, `ZOOM_AMOUNT = 0.12`, `PAN_AMOUNT = 0.5`,
-  `FADE_SECONDS = 1.0`, `ZOOM_MODES = (alternate, in, out, inout, none)`,
-  `IMAGE_EXTS = {.jpg,.jpeg,.png,.webp}`.
+- `_dimensions(height) -> (w, h, "inter")` — 16:9 output size + the **2× intermediate** that
+  images are upscaled to before zoompan (sub-pixel zoom steps = smooth, no trembling).
+- `_zoom_filter(mode, width, height, inter, ...) -> str` — builds the zoompan chain for a
+  **pure centered** Ken Burns zoom (NO pan — the user found panning "shaky"). Zoom is driven
+  by `mod(on, frames_per_image)` so it **resets per image** under the concat demuxer (plain
+  `zoompan` drifts). Modes in `ZOOM_MODES`.
+- `_video_filter(zoom_mode, audio_duration, fade, width, height, inter)` /
+  `_audio_filter(audio_duration, fade, normalize)` — assemble the `-vf` (zoom + fade in/out)
+  and `-af` (loudnorm to -14 LUFS + afade in/out) chains. `_clamp_fade` keeps fades ≤ half.
+- `build_ffmpeg_cmd(concat, audio, output, audio_duration, zoom_mode="alternate", fade=1.0,
+  normalize=True, height=DEFAULT_HEIGHT)` — **shared** ffmpeg command (CLI + web).
+- `create_video(..., zoom_mode, fade, normalize, height)` — runs it synchronously (CLI).
+- `main() -> int` — arg parsing (`--zoom MODE`, `--res HEIGHT`, `--fade SECONDS`,
+  `--no-normalize`).
+- Constants: `SECONDS_PER_IMAGE = 13`, `FPS = 30`, `ZOOM_AMOUNT = 0.12`, `FADE_SECONDS = 1.0`,
+  `RESOLUTION_WIDTHS`, `DEFAULT_HEIGHT = 480`, `CRF = 23`,
+  `ZOOM_MODES = (alternate, in, out, inout, none)`, `IMAGE_EXTS = {.jpg,.jpeg,.png,.webp}`.
 
 ### `app.py` — web server
 - Binds **`127.0.0.1` only** (not exposed to the network). Port from `PORT` env, default 8000.
@@ -116,9 +119,9 @@ python3 app.py        # opens http://localhost:8000 ; keep the terminal open
 - Concat demuxer: temp `_concat.txt` with **absolute** paths, single-quotes escaped as
   `'\''`, `-safe 0`, and the final `file` line repeated without a `duration` (last-frame
   quirk safety). The temp file is deleted in a `finally` block.
-- Motion: `zoompan` (Ken Burns) with per-image-reset zoom **and** alternating pan; images
-  pre-scaled to ~1.33x output (`_dimensions` intermediate) for smoothness. `--zoom none`
-  falls back to plain `scale`.
+- Motion: `zoompan` (Ken Burns) with per-image-reset **centered** zoom (NO pan — panning
+  read as "shaky"). Images pre-scaled to **2× output** (`_dimensions` intermediate) so the
+  zoom moves sub-pixel and looks smooth. `--zoom none` falls back to plain `scale`.
 - Polish (default on): video `fade` in/out + audio `afade` in/out (`--fade SECONDS`, 0=off)
   and `loudnorm=I=-14:TP=-1.5:LRA=11` (`--no-normalize` to skip). Web sends `zoom`, `fade`,
   `normalize`, `resolution` form fields to `POST /render`.
