@@ -18,22 +18,27 @@ filename order (`1, 2, 3 …`), and the video is trimmed to exactly the length o
 ## Usage
 
 ```bash
-python3 make_video.py <audio_file> <images_folder> <output_file> [--zoom MODE] [--fade SECONDS] [--no-normalize]
+python3 make_video.py <audio_file> <images_folder> <output_file> [--res HEIGHT] [--zoom MODE] [--fade SECONDS] [--no-normalize]
 ```
 
 Example:
 
 ```bash
-python3 make_video.py audio.mp3 ./images ./output/story.mp4 --zoom alternate --fade 1.5
+python3 make_video.py audio.mp3 ./images ./output/story.mp4 --res 480 --zoom alternate
 ```
 
 Options:
 
 | Flag | Effect |
 |------|--------|
+| `--res HEIGHT` | Output resolution: `480` (default), `720`, `1080`, `360`. **Lower = much faster + smaller.** |
 | `--zoom MODE` | Ken Burns effect: `alternate` (default), `in`, `out`, `inout`, `none` |
 | `--fade SECONDS` | Fade in/out (video + audio); `0` disables (default `1`) |
 | `--no-normalize` | Skip loudness normalization (default: normalize to −14 LUFS) |
+
+**Speed tip:** resolution is by far the biggest factor in render time — 1080p is roughly
+**12× slower** than the 480p default. Storytelling over static images looks fine at 480p, so
+that's the default; bump to 720p/1080p only if you need it sharper.
 
 `--zoom` modes: `alternate` = image 1 zooms in, image 2 out, …; `in`/`out` = every image
 the same way; `inout` = zoom in then back out; `none` = static. All zooming modes also add a
