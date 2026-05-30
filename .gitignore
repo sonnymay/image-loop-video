@@ -1,0 +1,14 @@
+# Rendered video output / web render history (large, generated — not source)
+renders/
+output/
+*.mp4
+
+# Temp concat file (normally auto-deleted)
+_concat.txt
+
+# Python
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store

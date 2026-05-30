@@ -1,0 +1,2 @@
+# No Python packages required — uses only the standard library + ffmpeg.
+# Install ffmpeg once with: brew install ffmpeg

@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>make_video</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --card: #181b22;
+    --card-2: #1f232c;
+    --border: #2a2f3a;
+    --text: #e7eaf0;
+    --muted: #9aa3b2;
+    --accent: #6d5efc;
+    --accent-2: #8b7dff;
+    --good: #34d399;
+    --bad: #f87171;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: radial-gradient(1200px 600px at 50% -10%, #1b1f2b 0%, var(--bg) 60%);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 48px 16px;
+  }
+  .wrap { width: 100%; max-width: 640px; }
+  header { text-align: center; margin-bottom: 28px; }
+  h1 { font-size: 28px; margin: 0 0 6px; letter-spacing: -0.02em; }
+  header p { color: var(--muted); margin: 0; font-size: 15px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 24px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+  }
+  .field { display: block; margin-bottom: 18px; }
+  .field-label { font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 8px; }
+  .drop {
+    border: 1.5px dashed var(--border);
+    border-radius: 12px;
+    background: var(--card-2);
+    padding: 18px;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    user-select: none;
+  }
+  .drop:hover { border-color: var(--accent); }
+  .drop.drag { border-color: var(--accent); background: #232838; }
+  .drop.has-file { border-color: var(--good); border-style: solid; }
+  .drop .icon { font-size: 22px; }
+  .drop .main { font-size: 14px; }
+  .drop.has-file .main { color: var(--good); font-weight: 600; }
+  .drop .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  input[type=file] { display: none; }
+  select {
+    width: 100%;
+    background: var(--card-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 13px 14px;
+    font-size: 14px;
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  select:hover { border-color: var(--accent); }
+  .checks { display: flex; flex-wrap: wrap; gap: 8px 22px; }
+  .check { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); cursor: pointer; }
+  .check input { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+  .note { font-size: 12px; color: var(--muted); margin: 2px 0 20px; }
+  button {
+    width: 100%;
+    border: none;
+    border-radius: 12px;
+    padding: 14px;
+    font-size: 15px;
+    font-weight: 600;
+    color: #fff;
+    background: linear-gradient(180deg, var(--accent-2), var(--accent));
+    cursor: pointer;
+    transition: filter .15s, transform .05s;
+  }
+  button:hover:not(:disabled) { filter: brightness(1.07); }
+  button:active:not(:disabled) { transform: translateY(1px); }
+  button:disabled { opacity: .55; cursor: not-allowed; }
+  .progress-wrap { margin-top: 22px; display: none; }
+  .bar { height: 10px; background: var(--card-2); border-radius: 999px; overflow: hidden; border: 1px solid var(--border); }
+  .bar > span { display: block; height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width .4s ease; }
+  .status { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); margin-top: 8px; }
+  .result { margin-top: 22px; display: none; }
+  video { width: 100%; border-radius: 12px; background: #000; border: 1px solid var(--border); }
+  .summary { list-style: none; padding: 0; margin: 14px 0 0; font-size: 13px; }
+  .summary li { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid var(--border); }
+  .summary li:last-child { border-bottom: none; }
+  .summary .k { color: var(--muted); }
+  a.download {
+    display: block; text-align: center; text-decoration: none; margin-top: 16px;
+    padding: 13px; border-radius: 12px; font-weight: 600; color: #fff;
+    background: var(--good); transition: filter .15s;
+  }
+  a.download:hover { filter: brightness(1.06); }
+  .error {
+    display: none; margin-top: 18px; padding: 12px 14px; border-radius: 10px;
+    background: rgba(248,113,113,.12); border: 1px solid rgba(248,113,113,.4);
+    color: #fecaca; font-size: 13px; white-space: pre-wrap;
+  }
+  .footer { text-align: center; color: var(--muted); font-size: 12px; margin-top: 22px; }
+  code { background: var(--card-2); padding: 1px 6px; border-radius: 6px; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>🎬 make_video</h1>
+      <p>Audio + 16:9 images → a looping MP4, rendered locally.</p>
+    </header>
+
+    <div class="card">
+      <form id="form">
+        <div class="field">
+          <div class="field-label">AUDIO FILE</div>
+          <div class="drop" id="audio-drop">
+            <div class="icon">🎵</div>
+            <div>
+              <div class="main" id="audio-main">Click to choose an audio file</div>
+              <div class="sub">MP3, WAV, or M4A · or drag it here</div>
+            </div>
+          </div>
+          <input type="file" id="audio" name="audio" accept="audio/*,.mp3,.wav,.m4a" />
+        </div>
+
+        <div class="field">
+          <div class="field-label">IMAGES</div>
+          <div class="drop" id="images-drop">
+            <div class="icon">🖼️</div>
+            <div>
+              <div class="main" id="images-main">Click to choose your images</div>
+              <div class="sub">JPG, PNG, or WEBP · select all at once, or drag them here</div>
+            </div>
+          </div>
+          <input type="file" id="images" name="images" accept=".jpg,.jpeg,.png,.webp" multiple />
+        </div>
+
+        <div class="field">
+          <div class="field-label">ZOOM EFFECT</div>
+          <select id="zoom" name="zoom">
+            <option value="alternate">Alternate — zoom in, then out, per image (recommended)</option>
+            <option value="in">Zoom in on every image</option>
+            <option value="out">Zoom out on every image</option>
+            <option value="inout">Zoom in then back out, within each image</option>
+            <option value="none">No zoom (static)</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <div class="field-label">POLISH</div>
+          <div class="checks">
+            <label class="check"><input type="checkbox" id="fade" checked /> Fade in / out</label>
+            <label class="check"><input type="checkbox" id="normalize" checked /> Normalize loudness (−14 LUFS)</label>
+          </div>
+        </div>
+
+        <p class="note">Each image shows for 13s with a slow Ken Burns zoom, looping in numeric filename order (1, 2, 3 …) until the audio ends. Output is 1080p H.264 MP4 trimmed to the audio length.</p>
+
+        <button type="submit" id="submit">Create video</button>
+      </form>
+
+      <div class="progress-wrap" id="progress-wrap">
+        <div class="bar"><span id="bar-fill"></span></div>
+        <div class="status">
+          <span id="status-text">Starting…</span>
+          <span id="status-pct">0%</span>
+        </div>
+      </div>
+
+      <div class="error" id="error"></div>
+
+      <div class="result" id="result">
+        <video id="preview" controls></video>
+        <ul class="summary" id="summary"></ul>
+        <a class="download" id="download" download>⬇ Download MP4</a>
+      </div>
+    </div>
+
+    <div class="footer">Runs entirely on your Mac · <code>python3 app.py</code></div>
+  </div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const audioInput = $("audio");
+  const imagesInput = $("images");
+
+  // Reflect the current input selection in the drop zone. Always driven by the
+  // input's REAL .files, so it can never get out of sync (e.g. after a reload,
+  // which clears file inputs but might otherwise leave stale text behind).
+  function syncAudio() {
+    const f = audioInput.files[0];
+    $("audio-main").textContent = f ? f.name : "Click to choose an audio file";
+    $("audio-drop").classList.toggle("has-file", !!f);
+  }
+  function syncImages() {
+    const n = imagesInput.files.length;
+    $("images-main").textContent = n
+      ? `${n} image${n > 1 ? "s" : ""} selected`
+      : "Click to choose your images";
+    $("images-drop").classList.toggle("has-file", n > 0);
+  }
+
+  // Wire a drop zone: single click trigger (no <label>, so the picker opens
+  // exactly once), plus drag-and-drop.
+  function wireDrop(dropId, input, sync) {
+    const drop = $(dropId);
+    drop.addEventListener("click", () => input.click());
+    input.addEventListener("change", sync);
+    ["dragenter", "dragover"].forEach((ev) =>
+      drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("drag"); })
+    );
+    ["dragleave", "dragend"].forEach((ev) =>
+      drop.addEventListener(ev, () => drop.classList.remove("drag"))
+    );
+    drop.addEventListener("drop", (e) => {
+      e.preventDefault();
+      drop.classList.remove("drag");
+      if (e.dataTransfer && e.dataTransfer.files.length) {
+        input.files = e.dataTransfer.files;
+        sync();
+      }
+    });
+  }
+
+  wireDrop("audio-drop", audioInput, syncAudio);
+  wireDrop("images-drop", imagesInput, syncImages);
+
+  // Re-sync whenever the page is shown (covers normal load AND back/forward
+  // cache restores, where the browser clears file inputs).
+  window.addEventListener("pageshow", () => { syncAudio(); syncImages(); });
+
+  function showError(msg) {
+    const el = $("error");
+    el.textContent = msg;
+    el.style.display = "block";
+  }
+
+  function fmtDuration(sec) {
+    sec = Math.round(sec);
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = sec % 60;
+    return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  }
+
+  const form = $("form");
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    $("error").style.display = "none";
+    $("result").style.display = "none";
+
+    if (!audioInput.files.length) return showError("Please choose an audio file.");
+    if (!imagesInput.files.length) return showError("Please choose at least one image.");
+
+    const fd = new FormData();
+    fd.append("audio", audioInput.files[0]);
+    for (const f of imagesInput.files) fd.append("images", f);
+    fd.append("zoom", $("zoom").value);
+    fd.append("fade", $("fade").checked ? "1" : "0");
+    fd.append("normalize", $("normalize").checked ? "1" : "0");
+
+    $("submit").disabled = true;
+    $("progress-wrap").style.display = "block";
+    $("bar-fill").style.width = "0%";
+    $("status-text").textContent = "Uploading…";
+    $("status-pct").textContent = "";
+
+    let jobId;
+    try {
+      const res = await fetch("/render", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Upload failed.");
+      jobId = data.job_id;
+    } catch (err) {
+      $("submit").disabled = false;
+      $("progress-wrap").style.display = "none";
+      return showError(err.message);
+    }
+
+    poll(jobId);
+  });
+
+  async function poll(jobId) {
+    try {
+      const res = await fetch(`/progress/${jobId}`);
+      const job = await res.json();
+
+      if (job.status === "error") {
+        $("submit").disabled = false;
+        $("progress-wrap").style.display = "none";
+        return showError(job.error || "Rendering failed.");
+      }
+
+      const pct = Math.round(job.percent || 0);
+      $("bar-fill").style.width = pct + "%";
+      $("status-pct").textContent = pct + "%";
+      $("status-text").textContent =
+        job.status === "queued" ? "Preparing…" : "Rendering…";
+
+      if (job.status === "done") {
+        $("status-text").textContent = "Done!";
+        $("bar-fill").style.width = "100%";
+        $("status-pct").textContent = "100%";
+        finish(jobId, job);
+        return;
+      }
+      setTimeout(() => poll(jobId), 700);
+    } catch (err) {
+      setTimeout(() => poll(jobId), 1500);
+    }
+  }
+
+  function finish(jobId, job) {
+    const s = job.summary;
+    $("preview").src = `/file/${jobId}`;
+    const dl = $("download");
+    dl.href = `/file/${jobId}?dl=1`;
+    dl.setAttribute("download", job.download_name || "video.mp4");
+    if (s) {
+      $("summary").innerHTML = `
+        <li><span class="k">Audio duration</span><span>${fmtDuration(s.duration)} (${s.duration}s)</span></li>
+        <li><span class="k">Images</span><span>${s.images}</span></li>
+        <li><span class="k">Image slots</span><span>${s.slots} · ${s.loops} loops (${s.seconds_per_image}s each)</span></li>
+        <li><span class="k">Output size</span><span>${s.size_mb} MB</span></li>`;
+    }
+    $("result").style.display = "block";
+    $("submit").disabled = false;
+  }
+</script>
+</body>
+</html>
