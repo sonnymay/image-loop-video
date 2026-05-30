@@ -44,12 +44,13 @@ Two front-ends, one engine:
 - `get_images(folder) -> list[Path]` — supported images, absolute paths, natural-sorted.
 - `build_concat_file(images, audio_duration, concat_path) -> (entries, loops)` — writes the
   ffmpeg concat-demuxer file.
-- `_dimensions(height) -> (w, h, "inter")` — 16:9 output size + the **2× intermediate** that
-  images are upscaled to before zoompan (sub-pixel zoom steps = smooth, no trembling).
-- `_zoom_filter(mode, width, height, inter, ...) -> str` — builds the zoompan chain for a
-  **pure centered** Ken Burns zoom (NO pan — the user found panning "shaky"). Zoom is driven
-  by `mod(on, frames_per_image)` so it **resets per image** under the concat demuxer (plain
-  `zoompan` drifts). Modes in `ZOOM_MODES`.
+- `_dimensions(height) -> (w, h, super_w, super_h)` — 16:9 output size + the **2× super**
+  size the zoom is rendered at before downscaling to output.
+- `_zoom_filter(mode, width, height, super_w, super_h, ...) -> str` — builds the zoompan
+  chain for a **pure centered** Ken Burns zoom (NO pan — the user found panning "shaky"),
+  **rendered at 2× then downscaled** so the downscale anti-aliases zoompan's integer steps
+  (smooth). Zoom driven by `mod(on, frames_per_image)` → **resets per image** under the
+  concat demuxer (plain `zoompan` drifts). Modes in `ZOOM_MODES`.
 - `_video_filter(zoom_mode, audio_duration, fade, width, height, inter)` /
   `_audio_filter(audio_duration, fade, normalize)` — assemble the `-vf` (zoom + fade in/out)
   and `-af` (loudnorm to -14 LUFS + afade in/out) chains. `_clamp_fade` keeps fades ≤ half.
@@ -120,8 +121,14 @@ python3 app.py        # opens http://localhost:8000 ; keep the terminal open
   `'\''`, `-safe 0`, and the final `file` line repeated without a `duration` (last-frame
   quirk safety). The temp file is deleted in a `finally` block.
 - Motion: `zoompan` (Ken Burns) with per-image-reset **centered** zoom (NO pan — panning
-  read as "shaky"). Images pre-scaled to **2× output** (`_dimensions` intermediate) so the
-  zoom moves sub-pixel and looks smooth. `--zoom none` falls back to plain `scale`.
+  read as "shaky"). **Supersampled**: rendered at 2× (`_dimensions` super_w/h) then
+  downscaled to output, so the downscale averages away zoompan's 1px stepping (the residual
+  "shake"). `--zoom none` falls back to plain `scale`.
+- ⚠️ **Smooth-vs-fast tension (unresolved):** supersampling fixes the shake but ~2-4× slower
+  (profiled 360p 30.8s/60s, 480p 63s/60s). The proper fix — render each unique image's
+  smooth clip ONCE in parallel, then concat-loop — is NOT yet built (see roadmap). Until
+  then, smoothness costs render time. `zoompan` is the only filter that crops-to-fixed-size;
+  `scale` can't animate frame size (video needs constant dims), so scale-based zoom is out.
 - Polish (default on): video `fade` in/out + audio `afade` in/out (`--fade SECONDS`, 0=off)
   and `loudnorm=I=-14:TP=-1.5:LRA=11` (`--no-normalize` to skip). Web sends `zoom`, `fade`,
   `normalize`, `resolution` form fields to `POST /render`.

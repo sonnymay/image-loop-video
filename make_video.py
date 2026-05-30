@@ -48,27 +48,29 @@ CRF = 23
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 
 
-def _dimensions(height: int) -> tuple[int, int, str]:
-    """Return (width, height, intermediate "w:h") for a 16:9 output of the given height.
+def _dimensions(height: int) -> tuple[int, int, int, int]:
+    """Return (width, height, super_w, super_h) for a 16:9 output of the given height.
 
-    The intermediate is 2x the output: images are upscaled to it before zoompan so the slow
-    zoom moves in sub-pixel steps (smooth, no trembling), then zoompan renders down to the
-    real output size. 2x keeps each zoompan rounding step <0.5px at the output.
+    `super_*` is 2x the output. The Ken Burns zoom is rendered at this 2x size and then
+    downscaled to the real output, which **averages away** zoompan's integer-pixel stepping
+    (true supersampling / anti-aliasing) — without it the slow zoom visibly trembles.
     """
     width = RESOLUTION_WIDTHS[height]
-    inter_w = (width * 2) & ~1   # round down to even
-    inter_h = (height * 2) & ~1
-    return width, height, f"{inter_w}:{inter_h}"
+    super_w = (width * 2) & ~1   # round down to even
+    super_h = (height * 2) & ~1
+    return width, height, super_w, super_h
 
 
 def _zoom_filter(
-    mode: str, width: int, height: int, inter: str,
+    mode: str, width: int, height: int, super_w: int, super_h: int,
     seconds: int = SECONDS_PER_IMAGE, fps: int = FPS,
 ) -> str:
     """Return the ffmpeg `-vf` filter chain for the given Ken Burns zoom mode.
 
     The zoom is driven by ``mod(on, frames_per_image)`` so it RESETS for every
     image when fed by the concat demuxer (otherwise zoompan drifts continuously).
+    It is rendered at 2x (``super_*``) and downscaled to (``width`` x ``height``) so the
+    downscale anti-aliases zoompan's integer stepping (smooth, no trembling).
     ``mode="none"`` returns a plain scale with no zoom.
     """
     p = seconds * fps  # output frames per image
@@ -86,14 +88,15 @@ def _zoom_filter(
              f"1+{a}*{progress},1+{a}*(1-{progress}))")
     else:  # "none" or unknown -> no zoom
         return f"scale={width}:{height},setsar=1"
-    # Pure CENTERED zoom (no pan) — the crop stays dead-center so the image only
-    # zooms in/out, with no side-to-side drift.
+    # Pure CENTERED zoom (no pan). Rendered at super-size, then downscaled to output:
+    # the downscale averages out zoompan's 1px steps -> smooth.
     x = "iw/2-(iw/zoom/2)"
     y = "ih/2-(ih/zoom/2)"
     return (
-        f"scale={inter},"
+        f"scale={super_w}:{super_h},"
         f"zoompan=z='{z}':d={p}:x='{x}':y='{y}':"
-        f"s={width}x{height}:fps={fps},setsar=1"
+        f"s={super_w}x{super_h}:fps={fps},"
+        f"scale={width}:{height},setsar=1"
     )
 
 
@@ -106,10 +109,10 @@ def _clamp_fade(fade: float, duration: float) -> float:
 
 def _video_filter(
     zoom_mode: str, audio_duration: float, fade: float,
-    width: int, height: int, inter: str,
+    width: int, height: int, super_w: int, super_h: int,
 ) -> str:
-    """Video `-vf` chain: Ken Burns zoom/pan plus optional fade in/out."""
-    vf = _zoom_filter(zoom_mode, width, height, inter)
+    """Video `-vf` chain: Ken Burns zoom plus optional fade in/out."""
+    vf = _zoom_filter(zoom_mode, width, height, super_w, super_h)
     fade = _clamp_fade(fade, audio_duration)
     if fade > 0:
         out_start = max(0.0, audio_duration - fade)
@@ -236,7 +239,7 @@ def build_ffmpeg_cmd(
     loudness-normalizes the audio to YouTube's -14 LUFS target; ``height`` is the
     output resolution (see `RESOLUTION_WIDTHS`).
     """
-    width, height, inter = _dimensions(height)
+    width, height, super_w, super_h = _dimensions(height)
     cmd = [
         "ffmpeg",
         "-y",
@@ -257,7 +260,7 @@ def build_ffmpeg_cmd(
         "-map",
         "1:a:0",
         "-vf",
-        _video_filter(zoom_mode, audio_duration, fade, width, height, inter),
+        _video_filter(zoom_mode, audio_duration, fade, width, height, super_w, super_h),
         "-c:v",
         "libx264",
         "-preset",
