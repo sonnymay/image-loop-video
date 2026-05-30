@@ -163,6 +163,16 @@
         </div>
 
         <div class="field">
+          <div class="field-label">RESOLUTION</div>
+          <select id="resolution" name="resolution">
+            <option value="480" selected>480p — recommended (fastest, smallest)</option>
+            <option value="720">720p — sharper, ~2× slower</option>
+            <option value="360">360p — smallest</option>
+            <option value="1080">1080p — sharpest, much slower</option>
+          </select>
+        </div>
+
+        <div class="field">
           <div class="field-label">POLISH</div>
           <div class="checks">
             <label class="check"><input type="checkbox" id="fade" checked /> Fade in / out</label>
@@ -272,6 +282,7 @@
     fd.append("audio", audioInput.files[0]);
     for (const f of imagesInput.files) fd.append("images", f);
     fd.append("zoom", $("zoom").value);
+    fd.append("resolution", $("resolution").value);
     fd.append("fade", $("fade").checked ? "1" : "0");
     fd.append("normalize", $("normalize").checked ? "1" : "0");
 
@@ -337,6 +348,7 @@
         <li><span class="k">Audio duration</span><span>${fmtDuration(s.duration)} (${s.duration}s)</span></li>
         <li><span class="k">Images</span><span>${s.images}</span></li>
         <li><span class="k">Image slots</span><span>${s.slots} · ${s.loops} loops (${s.seconds_per_image}s each)</span></li>
+        <li><span class="k">Resolution</span><span>${s.resolution || ""}</span></li>
         <li><span class="k">Output size</span><span>${s.size_mb} MB</span></li>`;
     }
     $("result").style.display = "block";

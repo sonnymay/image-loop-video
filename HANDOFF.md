@@ -107,8 +107,9 @@ python3 app.py        # opens http://localhost:8000 ; keep the terminal open
 
 ## Encode settings (the contract — keep CLI & web identical via `build_ffmpeg_cmd`)
 
-- Container/codec: MP4, H.264 (`libx264`), `-preset fast`, `-crf 18`, `-pix_fmt yuv420p`.
-- Resolution/fps: scaled to `1920x1080` (`scale=1920:1080,setsar=1`), `-r 30`.
+- Container/codec: MP4, H.264 (`libx264`), `-preset fast`, `-crf 23` (`CRF`), `yuv420p`.
+- **Resolution: configurable, DEFAULT 480p** (`RESOLUTION_WIDTHS`, `_dimensions`). 16:9 at
+  1080/720/480/360p. `--res HEIGHT` (CLI) / `resolution` form field (web). `-r 30`.
 - Audio: AAC `-b:a 192k`. `-movflags +faststart`.
 - Looping/trim: `entries = ceil(audio_duration / 13)` image slots cycled over the set, then
   `-t <audio_duration>` trims to the exact audio length (no trailing silence).
@@ -116,15 +117,23 @@ python3 app.py        # opens http://localhost:8000 ; keep the terminal open
   `'\''`, `-safe 0`, and the final `file` line repeated without a `duration` (last-frame
   quirk safety). The temp file is deleted in a `finally` block.
 - Motion: `zoompan` (Ken Burns) with per-image-reset zoom **and** alternating pan; images
-  pre-scaled to `2560x1440` for smoothness. `--zoom none` falls back to plain `scale`.
+  pre-scaled to ~1.33x output (`_dimensions` intermediate) for smoothness. `--zoom none`
+  falls back to plain `scale`.
 - Polish (default on): video `fade` in/out + audio `afade` in/out (`--fade SECONDS`, 0=off)
-  and `loudnorm=I=-14:TP=-1.5:LRA=11` (`--no-normalize` to skip). Built by `_video_filter`
-  / `_audio_filter`; web sends `zoom`, `fade`, `normalize` form fields to `POST /render`.
+  and `loudnorm=I=-14:TP=-1.5:LRA=11` (`--no-normalize` to skip). Web sends `zoom`, `fade`,
+  `normalize`, `resolution` form fields to `POST /render`.
 
-**Roadmap (requested enhancements):** ✅ zoom, ✅ pan, ✅ fades, ✅ loudness-normalize.
-⏳ Next: background music bed (extra audio input + `amix`/sidechain duck). ⏳ Then: crossfade
-transitions between images (needs a per-image-clip pipeline — `xfade` can't run on the
-single concat-demuxer stream).
+**Speed:** Render time is dominated by **output resolution** (profiled: 1080p ≈ 5x slower
+than 720p, ≈ 12x slower than 480p, for the same video). fps and x264 preset barely matter;
+`zoompan` is only ~25% over plain scale at low res. So the default is 480p. If renders ever
+need to be faster still, the next lever is **per-unique-image clips rendered in parallel**
+then concat-looped (zoompan is single-threaded; this also caps work at N×13s, not full
+duration) — not yet implemented.
+
+**Roadmap (requested enhancements):** ✅ zoom, ✅ pan, ✅ fades, ✅ loudness-normalize,
+✅ selectable resolution / faster (default 480p). ⏳ Next: background music bed (BYO track
+only — see [[project-output-prefs]]; copyright-safe, no bundled audio). ⏳ Then: crossfade
+transitions (needs per-image-clip pipeline — `xfade` can't run on the single concat stream).
 
 ## Key design decisions (and why)
 
@@ -171,6 +180,16 @@ single concat-demuxer stream).
   then saved the HTML error page as a `.html` file. Fixed 2026-05-29 by persisting each
   render to `renders/<job_id>/` (`output.mp4` + `job.json`) and loading jobs from disk on
   startup. Don't revert to memory-only job state.
+
+- **Never restart / kill the server while a render is in progress** — `JOBS` is in memory
+  and `job.json` is only written when the render finishes. Killing the Python process
+  orphans the `ffmpeg` child (it keeps running, reparented) but the thread that would write
+  `job.json` dies, so the finished video has no metadata and vanishes from the UI. Before any
+  restart: `ps -Ao pid,command | grep "[f]fmpeg"` and wait if one is active. Recovery if it
+  happens: wait for the orphan ffmpeg to exit, then hand-write `renders/<id>/job.json`
+  (`status:done`, an `output` + `download_name` + `summary`) — the server's `_resolve_job`
+  reads it from disk on demand. (A future hardening: write `job.json` at job creation and
+  reconcile `rendering`→`done/error` on startup by probing `output.mp4`.)
 
 ## Verification already performed (all passed)
 

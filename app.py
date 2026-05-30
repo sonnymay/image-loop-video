@@ -30,7 +30,9 @@ from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
 
 from make_video import (
+    DEFAULT_HEIGHT,
     IMAGE_EXTS,
+    RESOLUTION_WIDTHS,
     SECONDS_PER_IMAGE,
     ZOOM_MODES,
     build_concat_file,
@@ -154,6 +156,7 @@ def _render_job(
     zoom_mode: str,
     fade: float,
     normalize: bool,
+    height: int,
 ) -> None:
     """Background worker: build the concat file and render with progress updates."""
     job = JOBS[job_id]
@@ -178,7 +181,8 @@ def _render_job(
         #      and block ffmpeg (which froze renders at 0% CPU mid-way).
         # Progress comes from "-progress pipe:1" on stdout, which we drain live.
         cmd = build_ffmpeg_cmd(
-            concat, audio_path, output, audio_duration, zoom_mode, fade, normalize
+            concat, audio_path, output, audio_duration,
+            zoom_mode, fade, normalize, height,
         )
         cmd = [c for c in cmd if c != "-stats"]
         cmd = [cmd[0], "-progress", "pipe:1", "-nostats"] + cmd[1:]
@@ -219,6 +223,7 @@ def _render_job(
                     "loops": round(loops, 1),
                     "size_mb": round(size_mb, 1),
                     "seconds_per_image": SECONDS_PER_IMAGE,
+                    "resolution": f"{RESOLUTION_WIDTHS[height]}x{height}",
                 },
             )
         _write_job_meta(job_dir, job)
@@ -388,6 +393,12 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             fade = 1.0
         normalize = form.getfirst("normalize", "1") not in ("0", "false", "off", "")
+        try:
+            height = int(str(form.getfirst("resolution", DEFAULT_HEIGHT)).rstrip("p"))
+        except ValueError:
+            height = DEFAULT_HEIGHT
+        if height not in RESOLUTION_WIDTHS:
+            height = DEFAULT_HEIGHT
 
         output = job_dir / "output.mp4"
         JOBS[job_id] = {
@@ -401,7 +412,7 @@ class Handler(BaseHTTPRequestHandler):
         threading.Thread(
             target=_render_job,
             args=(job_id, job_dir, inputs_dir, audio_path, img_dir, output,
-                  zoom_mode, fade, normalize),
+                  zoom_mode, fade, normalize, height),
             daemon=True,
         ).start()
         return self._send_json({"job_id": job_id})
