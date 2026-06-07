@@ -76,3 +76,9 @@ the MP4. To use a different port: `PORT=8080 python3 app.py`.
 - **Output:** 1920×1080 H.264 (CRF 18, preset `fast`, yuv420p) MP4 with AAC 192k audio and
   `+faststart`, trimmed to the audio duration.
 - A temporary `_concat.txt` is written next to the output and deleted automatically.
+## Tips
+
+- For best results, use consistently sized images (1920x1080 recommended).
+- Name images numerically starting from 1 for predictable ordering.
+- Use `--zoom alternate` to vary the Ken Burns direction between images.
+- Longer audio files will loop the image set automatically.
